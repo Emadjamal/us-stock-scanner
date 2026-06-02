@@ -1,0 +1,14 @@
+# Copy to config.yaml and adjust filters.
+universe: sp500
+period: 3mo
+limit: null  # set e.g. 30 for faster test runs
+
+filters:
+  min_price: 5
+  max_price: 500
+  min_avg_volume_20d: 500000
+  min_change_pct: 2.0
+  max_change_pct: null
+  min_rsi: null
+  max_rsi: 70
+  rsi_period: 14
