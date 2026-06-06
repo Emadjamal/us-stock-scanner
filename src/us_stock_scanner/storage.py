@@ -91,8 +91,13 @@ def _get_conn():
         try:
             import libsql
             auth_token = os.getenv("TURSO_AUTH_TOKEN") or os.getenv("LIBSQL_AUTH_TOKEN")
-            conn = libsql.connect(database=turso_url, auth_token=auth_token)
-            conn.row_factory = _row_factory
+            # Pass row_factory at connect time for libsql (it does not support
+            # assigning conn.row_factory after creation like sqlite3 does).
+            conn = libsql.connect(
+                database=turso_url, 
+                auth_token=auth_token,
+                row_factory=_row_factory
+            )
             # libsql remote connections are server-side; no local WAL/PRAGMA needed for most cases
             return conn
         except ImportError as e:
