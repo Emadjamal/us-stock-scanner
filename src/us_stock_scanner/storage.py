@@ -21,6 +21,16 @@ import pandas as pd
 
 from .config import SignalSettings
 
+
+def _row_factory(cursor, row):
+    """Return rows as dicts so code can use row['column'] consistently
+    for both local sqlite3 and remote libsql/Turso connections.
+    This fixes TypeError when accessing row['symbol'] etc. on remote.
+    """
+    if cursor.description is None:
+        return row
+    return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -82,8 +92,8 @@ def _get_conn():
             import libsql
             auth_token = os.getenv("TURSO_AUTH_TOKEN") or os.getenv("LIBSQL_AUTH_TOKEN")
             conn = libsql.connect(database=turso_url, auth_token=auth_token)
+            conn.row_factory = _row_factory
             # libsql remote connections are server-side; no local WAL/PRAGMA needed for most cases
-            # Row access works similarly in recent versions (index + key)
             return conn
         except ImportError as e:
             # Fall back gracefully with a clear message (user can pip install libsql)
@@ -93,7 +103,7 @@ def _get_conn():
 
     # Local SQLite (original behavior)
     conn = sqlite3.connect(get_db_path(), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = _row_factory
     # Enable WAL mode for better concurrent reads/writes (local only)
     try:
         conn.execute("PRAGMA journal_mode=WAL;")
