@@ -1,0 +1,5 @@
+strategy:
+  min_daily_change_pct: -4.0
+  max_rsi: 85
+  min_confluence: 3
+  min_score_default: 45

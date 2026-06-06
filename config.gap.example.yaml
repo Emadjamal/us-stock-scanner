@@ -1,0 +1,9 @@
+universe: sp500
+period: 1mo
+limit: null
+
+filters:
+  min_price: 5
+  min_avg_volume_20d: 500000
+  min_gap_pct: 2.0
+  gap_direction: up

@@ -12,3 +12,46 @@ filters:
   min_rsi: null
   max_rsi: 70
   rsi_period: 14
+
+  # MACD — uncomment to enable
+  # macd_crossover: bullish   # bullish | bearish | above_zero | below_zero
+  # min_macd_hist: 0
+
+  # MA crossover — use period: 6mo or 1y for ma_slow: 200
+  # ma_fast: 50
+  # ma_slow: 200
+  # ma_type: sma              # sma | ema
+  # ma_crossover: golden      # golden | death | fast_above | fast_below
+
+  # Gap scanner — overnight open vs prior close
+  # min_gap_pct: 2.0
+  # gap_direction: up         # up | down
+
+  # Bollinger — %%B 0=lower band, 100=upper; squeeze = low bandwidth
+  # max_bb_bandwidth_pct: 5
+  # min_bb_pct_b: 80
+  # bb_touch: upper           # upper | lower
+
+  # Near 52-week high (use period: 1y)
+  # min_pct_from_high: -3     # within 3%% of rolling high
+
+  # Relative volume & ATR breakout
+  # min_rvol: 2.0
+  # min_atr_multiple: 1.5
+
+  # Stochastic & ADX
+  # stoch_crossover: bullish
+  # min_adx: 25
+
+# --- Main long strategy tuning (unifies with presets; used by default scans/UI/CLI) ---
+# These relax or tune the primary "best trade" engine (entry, grade, pillars).
+# strategy:
+#   min_daily_change_pct: -2.5   # was -0.5; allows mild red days / pullbacks
+#   max_rsi: 78.0                # was 75; lets strong leaders through
+#   min_rs_vs_spy: 0.5
+#   max_extension_pct: 15.0
+#   min_rvol_for_volume: 1.15
+#   min_confluence: 4
+#   min_score_default: 52
+#   # See SignalSettings in src for all (atr_stop_multiplier, bonuses, etc.)
+#   # You can combine with filters: for expert mode in same file.

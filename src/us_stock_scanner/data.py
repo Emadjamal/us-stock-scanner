@@ -33,9 +33,7 @@ def fetch_history(
 
         if len(chunk) == 1:
             symbol = chunk[0]
-            df = raw.copy()
-            df.columns = [c if isinstance(c, str) else c[0] for c in df.columns]
-            frames[symbol] = _normalize_frame(df)
+            frames[symbol] = _normalize_frame(raw.copy())
             continue
 
         for symbol in chunk:
@@ -48,9 +46,31 @@ def fetch_history(
     return frames
 
 
+_OHLCV = {"Open", "High", "Low", "Close", "Volume"}
+
+
+def _flatten_columns(columns) -> list[str]:
+    """yfinance uses (Price, Ticker) or (Ticker, Price) MultiIndex layouts."""
+    flat: list[str] = []
+    for col in columns:
+        if isinstance(col, str):
+            flat.append(col)
+            continue
+        if isinstance(col, tuple):
+            for part in col:
+                if part in _OHLCV:
+                    flat.append(part)
+                    break
+            else:
+                flat.append(str(col[-1]))
+            continue
+        flat.append(str(col))
+    return flat
+
+
 def _normalize_frame(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df.columns = [str(c).title() for c in df.columns]
+    df.columns = [c.title() for c in _flatten_columns(df.columns)]
     required = {"Open", "High", "Low", "Close", "Volume"}
     missing = required - set(df.columns)
     if missing:

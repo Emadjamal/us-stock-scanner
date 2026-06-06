@@ -1,0 +1,8 @@
+# Copy to data/watchlist.txt or edit in the UI (Watchlist tab)
+# One symbol per line
+
+AAPL
+MSFT
+NVDA
+GOOGL
+AMZN

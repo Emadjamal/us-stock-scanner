@@ -1,6 +1,13 @@
+streamlit>=1.32.0
 yfinance>=0.2.40
 pandas>=2.2.0
 pyyaml>=6.0.1
 rich>=13.7.0
 requests>=2.31.0
 lxml>=5.0.0
+
+# For cloud publishing with Turso (recommended)
+libsql
+
+# For Telegram bot
+python-telegram-bot>=21.0

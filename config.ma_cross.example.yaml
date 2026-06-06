@@ -1,0 +1,11 @@
+universe: sp500
+period: 1y
+limit: null
+
+filters:
+  min_price: 5
+  min_avg_volume_20d: 500000
+  ma_fast: 50
+  ma_slow: 200
+  ma_type: sma
+  ma_crossover: golden

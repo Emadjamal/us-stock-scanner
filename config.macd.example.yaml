@@ -1,0 +1,9 @@
+universe: sp500
+period: 6mo
+limit: 100
+
+filters:
+  min_price: 10
+  min_avg_volume_20d: 1000000
+  macd_crossover: bullish
+  min_macd_hist: 0

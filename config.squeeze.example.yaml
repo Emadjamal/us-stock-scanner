@@ -1,0 +1,10 @@
+# Bollinger squeeze — tight bands, coiled for a move
+universe: sp500
+period: 6mo
+limit: null
+
+filters:
+  min_price: 5
+  min_avg_volume_20d: 500000
+  max_bb_bandwidth_pct: 5
+  min_adx: 20

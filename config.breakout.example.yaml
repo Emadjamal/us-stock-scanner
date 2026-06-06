@@ -1,0 +1,12 @@
+# High-volume breakout near 52-week highs with strong trend
+universe: sp500
+period: 1y
+limit: null
+
+filters:
+  min_price: 10
+  min_avg_volume_20d: 1000000
+  min_rvol: 1.5
+  min_atr_multiple: 1.2
+  min_pct_from_high: -3
+  min_adx: 25

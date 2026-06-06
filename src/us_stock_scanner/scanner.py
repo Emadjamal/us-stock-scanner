@@ -5,8 +5,10 @@ from __future__ import annotations
 import pandas as pd
 
 from us_stock_scanner.data import fetch_history
-from us_stock_scanner.filters import ScanCriteria, evaluate_symbol
+from us_stock_scanner.filters import ScanCriteria, evaluate_symbol, sort_column
 from us_stock_scanner.universe import resolve_universe
+
+BASE_COLUMNS = ["symbol", "price", "change_pct", "volume", "avg_volume_20d", "rsi"]
 
 
 def run_scan(
@@ -31,7 +33,10 @@ def run_scan(
         rows.append({"symbol": symbol, **metrics})
 
     if not rows:
-        return pd.DataFrame(columns=["symbol", "price", "change_pct", "volume", "avg_volume_20d", "rsi"])
+        return pd.DataFrame(columns=BASE_COLUMNS)
 
     result = pd.DataFrame(rows)
+    by = sort_column(criteria)
+    if by in result.columns:
+        return result.sort_values(by, ascending=False).reset_index(drop=True)
     return result.sort_values("change_pct", ascending=False).reset_index(drop=True)
