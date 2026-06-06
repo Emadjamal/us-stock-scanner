@@ -23,9 +23,10 @@ from .config import SignalSettings
 
 
 def _row_factory(cursor, row):
-    """Return rows as dicts so code can use row['column'] consistently
-    for both local sqlite3 and remote libsql/Turso connections.
-    This fixes TypeError when accessing row['symbol'] etc. on remote.
+    """Return rows as dicts (for local sqlite3).
+    For remote libsql/Turso we do not set row_factory on the connection
+    (it doesn't support the same API), instead we handle tuple rows
+    at the few call sites that need name-based access.
     """
     if cursor.description is None:
         return row
@@ -95,8 +96,7 @@ def _get_conn():
             # assigning conn.row_factory after creation like sqlite3 does).
             conn = libsql.connect(
                 database=turso_url, 
-                auth_token=auth_token,
-                row_factory=_row_factory
+                auth_token=auth_token
             )
             # libsql remote connections are server-side; no local WAL/PRAGMA needed for most cases
             return conn
@@ -246,12 +246,17 @@ def load_watchlist() -> list[str]:
     conn = _get_conn()
     try:
         rows = conn.execute("SELECT symbol FROM watchlist ORDER BY symbol").fetchall()
-        symbols = [row["symbol"] for row in rows]
-        if not symbols:
+        if not rows:
             # Ensure a sensible default the first time
             default = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN"]
             save_watchlist(default)
             return default
+        # Support both dict rows (sqlite3 with row_factory or our _row_factory)
+        # and tuple rows (libsql remote without row_factory)
+        if isinstance(rows[0], (list, tuple)):
+            symbols = [row[0] for row in rows]
+        else:
+            symbols = [row["symbol"] for row in rows]
         return symbols
     finally:
         conn.close()
@@ -491,9 +496,15 @@ def load_custom_modes() -> dict[str, SignalSettings]:
         rows = conn.execute("SELECT name, data FROM custom_modes").fetchall()
         modes: dict[str, SignalSettings] = {}
         for row in rows:
-            name = row["name"]
+            # Support both dict rows and tuple rows (libsql)
+            if isinstance(row, (list, tuple)):
+                name = row[0]
+                data = row[1]
+            else:
+                name = row["name"]
+                data = row["data"]
             try:
-                sdict = json.loads(row["data"])
+                sdict = json.loads(data)
                 modes[name] = SignalSettings.from_dict(sdict)
             except Exception:
                 continue
