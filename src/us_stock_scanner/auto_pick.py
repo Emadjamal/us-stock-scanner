@@ -35,6 +35,7 @@ class ScanResult:
     scan_mode: str = "universe"
     scan_label: str = "sp500"
     skipped: dict[str, str] = field(default_factory=dict)
+    signals_found: int = 0  # number that passed analyze_symbol_v2 (all gates + confluence + min score + R:R) before top_picks/watch ranking
 
 
 def _market_context() -> tuple[MarketRegime | None, object]:
@@ -96,7 +97,7 @@ def run_scan(
             scan_label = scan_label or universe
 
     if not tickers:
-        return ScanResult(scan_mode=scan_mode, scan_label=scan_label or "empty")
+        return ScanResult(scan_mode=scan_mode, scan_label=scan_label or "empty", signals_found=0)
 
     # Resolve settings: mode first, then explicit settings as overrides
     if mode:
@@ -133,6 +134,7 @@ def run_scan(
         scan_mode=scan_mode,
         scan_label=scan_label or scan_mode,
         skipped=skipped,
+        signals_found=len(all_signals),
     )
 
 

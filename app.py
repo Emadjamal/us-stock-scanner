@@ -382,6 +382,20 @@ def _do_scan(
             label = universe
     st.session_state["scan_result"] = result
     st.session_state["scan_label"] = label
+
+    # Record the params/settings actually used for this scan (for the result header + parity debugging)
+    st.session_state["last_scan_params"] = st.session_state.get("last_scan_params") or {"mode": "?", "period": period, "interval": interval, "top_picks": top_picks}
+    if settings is not None:
+        st.session_state["last_scan_settings"] = st.session_state.get("last_scan_settings") or {
+            "min_chg": round(settings.min_daily_change_pct, 2),
+            "max_rsi": settings.max_rsi,
+            "min_rvol": settings.min_rvol_for_volume,
+            "min_conf": settings.min_confluence,
+            "min_score": settings.min_score_default,
+            "max_ext": settings.max_extension_pct,
+            "min_rs": settings.min_rs_vs_spy,
+        }
+
     if save_journal and result.top_picks:
         path = append_scan(result, universe=label, include_watchlist=log_watch)
         st.session_state["last_journal"] = str(path)
@@ -655,6 +669,15 @@ with st.sidebar:
         tp = st.session_state.get("top_picks_slider", 3)
         current_mode = st.session_state.get("strategy_mode", "default")
         st.session_state["last_scan_params"] = {"mode": current_mode, "period": period, "interval": tf, "top_picks": tp}
+        st.session_state["last_scan_settings"] = {
+            "min_chg": round(tune_settings.min_daily_change_pct, 2),
+            "max_rsi": tune_settings.max_rsi,
+            "min_rvol": tune_settings.min_rvol_for_volume,
+            "min_conf": tune_settings.min_confluence,
+            "min_score": tune_settings.min_score_default,
+            "max_ext": tune_settings.max_extension_pct,
+            "min_rs": tune_settings.min_rs_vs_spy,
+        }
         _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings, period=period, interval=tf, top_picks=tp)
         st.rerun()
     if st.button("Update outcomes", width="stretch"):
@@ -681,6 +704,20 @@ with tab_scan:
         tf = lp.get("interval", "1d")
         md = lp.get("mode", st.session_state.get("strategy_mode", "default"))
         st.caption(f"Effective: mode=`{md}` · period=`{p}` · timeframe=`{tf}` · db=`{db_label}`")
+
+        # Show the actual gate values used for this scan (critical for local vs cloud parity)
+        gs = st.session_state.get("last_scan_settings") or {}
+        if gs:
+            st.caption(
+                f"Gates used: daily_chg ≥ {gs.get('min_chg', '—')}% · RSI ≤ {gs.get('max_rsi', '—')} "
+                f"· RVOL ≥ {gs.get('min_rvol', '—')} · conf ≥ {gs.get('min_conf', '—')} "
+                f"· min_score {gs.get('min_score', '—')} · ext ≤ {gs.get('max_ext', '—')}% · RS ≥ {gs.get('min_rs', '—')}%"
+            )
+
+        # Signals found (how many cleared the full engine before picking top N)
+        sigs = getattr(result, "signals_found", 0)
+        if sigs or result.top_picks or result.worth_watching:
+            st.caption(f"Signals found (passed all gates + confluence + score + R:R): **{sigs}**  |  Top picks shown: {len(result.top_picks)}  |  Worth watching: {len(result.worth_watching)}")
         if result.market:
             m = result.market
             css = "market-ok" if m.bullish else "market-warn"
@@ -744,7 +781,21 @@ with tab_scan:
             )
 
         if result.skipped:
-            with st.expander(f"Did not pass ({len(result.skipped)} symbols)", expanded=result.scan_mode == "watchlist"):
+            # Quick categorized breakdown of why things were rejected (helps compare local vs cloud)
+            reasons = list(result.skipped.values())
+            no_data = sum(1 for r in reasons if "No market data" in r or "not enough" in r.lower())
+            weekly = sum(1 for r in reasons if "weekly" in r.lower() or "Higher-TF" in r or "Higher timeframe" in r)
+            rs_gate = sum(1 for r in reasons if "SPY" in r or "Underperforming" in r or "relative strength" in r.lower())
+            hard = sum(1 for r in reasons if any(x in r.lower() for x in ["down ", "overbought", "extended", "below 50", "macd not", "blow-off", "gap"]))
+            confluence = sum(1 for r in reasons if "confluence" in r.lower() or "too weak" in r.lower())
+            score = sum(1 for r in reasons if "score" in r.lower() or "grade" in r.lower() or "minimum" in r.lower())
+            other = len(reasons) - (no_data + weekly + rs_gate + hard + confluence + score)
+            st.caption(
+                f"Rejection breakdown (of {len(result.skipped)}): "
+                f"no-data/insufficient={no_data} · weekly/H-TF={weekly} · RS vs SPY={rs_gate} · "
+                f"hard gates (chg/rsi/ext/macd)={hard} · confluence={confluence} · score/RR={score} · other={max(0, other)}"
+            )
+            with st.expander(f"Did not pass ({len(result.skipped)} symbols)", expanded=(result.scan_mode == "watchlist" or len(result.top_picks) == 0)):
                 st.dataframe(
                     pd.DataFrame(
                         [{"Symbol": k, "Reason": v} for k, v in sorted(result.skipped.items())]
@@ -805,6 +856,15 @@ with tab_watchlist:
             tf = st.session_state.get("timeframe", "1d")
             tp = st.session_state.get("top_picks_slider", 3)
             st.session_state["last_scan_params"] = {"mode": current_mode, "period": period, "interval": tf, "top_picks": tp}
+            st.session_state["last_scan_settings"] = {
+                "min_chg": round(ts.min_daily_change_pct, 2),
+                "max_rsi": ts.max_rsi,
+                "min_rvol": ts.min_rvol_for_volume,
+                "min_conf": ts.min_confluence,
+                "min_score": ts.min_score_default,
+                "max_ext": ts.max_extension_pct,
+                "min_rs": ts.min_rs_vs_spy,
+            }
             result = run_auto_pick("watchlist", top_picks=tp, watch_count=wc, settings=ts, period=period, interval=tf)
         st.session_state["scan_result"] = result
         st.session_state["scan_label"] = "watchlist"
