@@ -74,6 +74,9 @@ if "_pending_tune" in st.session_state:
     for k, v in st.session_state.pop("_pending_tune").items():
         st.session_state[k] = v
 
+# Load customs early so the sidebar can reference them (e.g. to sync scan_period from a selected mode)
+customs = load_custom_modes()
+
 st.markdown(
     """
 <style>
@@ -343,19 +346,21 @@ def _do_scan(
     log_watch: bool,
     save_journal: bool,
     settings: SignalSettings | None = None,
+    period: str = "1y",
+    interval: str = "1d",
 ) -> None:
     label = universe
     with st.spinner("Scanning… please wait."):
         if mode == "Single ticker":
             sym = single_symbol.strip().upper()
-            result = run_single_symbol(sym, settings=settings)
+            result = run_single_symbol(sym, settings=settings, period=period, interval=interval)
             label = sym
         elif mode == "My watchlist":
-            result = run_auto_pick("watchlist", watch_count=watch_count, settings=settings)
+            result = run_auto_pick("watchlist", watch_count=watch_count, settings=settings, period=period, interval=interval)
             label = "watchlist"
         else:
             limit = None if full else 150
-            result = run_auto_pick(universe, limit=limit, watch_count=watch_count, settings=settings)
+            result = run_auto_pick(universe, limit=limit, watch_count=watch_count, settings=settings, period=period, interval=interval)
             label = universe
     st.session_state["scan_result"] = result
     st.session_state["scan_label"] = label
@@ -453,6 +458,41 @@ with st.sidebar:
         st.session_state["tune_min_rvol"] = mode_s.min_rvol_for_volume
         st.session_state["tune_min_conf"] = mode_s.min_confluence
 
+    # Sync scan period and timeframe from the selected named mode (if saved with the mode)
+    if 'customs' in dir() and strategy_mode != "custom" and strategy_mode in customs:
+        cdata = customs[strategy_mode]
+        if isinstance(cdata, dict):
+            mode_p = cdata.get("scan_period", "1y")
+            st.session_state["scan_period"] = mode_p
+            mode_tf = cdata.get("timeframe", "1d")
+            st.session_state["timeframe"] = mode_tf
+
+    # Scan period - now configurable in sidebar (and savable per mode in Modes tab)
+    available_periods = ["3mo", "6mo", "1y", "2y", "5y"]
+    current_p = st.session_state.get("scan_period", "1y")
+    if current_p not in available_periods:
+        current_p = "1y"
+    scan_period = st.selectbox(
+        "Scan Period (daily data lookback)",
+        options=available_periods,
+        index=available_periods.index(current_p),
+        key="scan_period",
+        help="How much historical daily data the scanner analyzes for patterns, indicators, and structure. Longer = more context for trends/weekly filter but slower scans. When you select a custom mode that has a saved period, it auto-applies here."
+    )
+
+    # Timeframe (bar size) — configurable just like scan_period
+    timeframe_options = ["1d", "1wk", "1mo"]
+    current_tf = st.session_state.get("timeframe", "1d")
+    if current_tf not in timeframe_options:
+        current_tf = "1d"
+    timeframe = st.selectbox(
+        "Timeframe (bar size)",
+        options=timeframe_options,
+        index=timeframe_options.index(current_tf),
+        key="timeframe",
+        help="Bar interval for the scan: daily (1d, default & recommended), weekly (1wk), or monthly (1mo). Affects indicators and the weekly trend filter. Non-daily is experimental. Saved per custom mode just like Scan Period."
+    )
+
     # --- Tuning for main strategy (unified, not hard-coded) ---
     with st.expander("⚙️ Fine-tune current mode (advanced)", expanded=False):
         st.caption("Relaxed defaults vs original strict. Changes apply on next Run scan.")
@@ -539,6 +579,11 @@ with st.sidebar:
                     "tune_min_rvol": s.min_rvol_for_volume,
                     "tune_min_conf": s.min_confluence,
                 }
+                # Support top-level "period" / "timeframe" (or "interval") in config.yaml
+                if "period" in cfg:
+                    st.session_state["scan_period"] = cfg["period"]
+                if "timeframe" in cfg or "interval" in cfg:
+                    st.session_state["timeframe"] = cfg.get("timeframe") or cfg.get("interval")
                 st.success("Loaded from config.yaml (set to Custom)")
                 st.rerun()
             except Exception as ex:
@@ -557,7 +602,9 @@ with st.sidebar:
                 min_rvol_for_volume=float(st.session_state["tune_min_rvol"]),
                 min_confluence=int(st.session_state["tune_min_conf"]),
             )
-            customs[new_mode_name.strip()] = current_tune
+            period = st.session_state.get("scan_period", "1y")
+            tf = st.session_state.get("timeframe", "1d")
+            customs[new_mode_name.strip()] = {"settings": current_tune, "scan_period": period, "timeframe": tf}
             save_custom_modes(customs)
             st.session_state["_set_strategy_mode"] = new_mode_name.strip()
             st.success(f"Saved as '{new_mode_name.strip()}' and activated.")
@@ -582,7 +629,9 @@ with st.sidebar:
     st.session_state["_last_tune_settings"] = tune_settings
 
     if st.button("Run scan", type="primary", width="stretch"):
-        _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings)
+        period = st.session_state.get("scan_period", "1y")
+        tf = st.session_state.get("timeframe", "1d")
+        _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings, period=period, interval=tf)
         st.rerun()
     if st.button("Update outcomes", width="stretch"):
         with st.spinner("Updating…"):
@@ -721,7 +770,9 @@ with tab_watchlist:
         else:
             ts = st.session_state.get("_last_tune_settings") or default_signal_settings()
         with st.spinner("Scanning watchlist…"):
-            result = run_auto_pick("watchlist", watch_count=wc, settings=ts)
+            period = st.session_state.get("scan_period", "1y")
+            tf = st.session_state.get("timeframe", "1d")
+            result = run_auto_pick("watchlist", watch_count=wc, settings=ts, period=period, interval=tf)
         st.session_state["scan_result"] = result
         st.session_state["scan_label"] = "watchlist"
         st.rerun()
@@ -817,6 +868,34 @@ with tab_modes:
 
     base_label = f"new from {base_for_new}" if edit_choice == "(create new)" else edit_choice
     st.write(f"**Editing parameters for base: {base_label}**")
+
+    # Scan period - exposed here so each custom mode can have its own preferred data lookback
+    available_periods = ["3mo", "6mo", "1y", "2y", "5y"]
+    default_period = st.session_state.get("scan_period", "1y")
+    if edit_choice != "(create new)" and edit_choice in customs:
+        cdata = customs[edit_choice]
+        default_period = cdata.get("scan_period", "1y") if isinstance(cdata, dict) else "1y"
+    mode_scan_period = st.selectbox(
+        "Preferred Scan Period for this mode",
+        options=available_periods,
+        index=available_periods.index(default_period) if default_period in available_periods else 2,
+        key=f"modes_scan_period_{edit_choice or 'new'}",
+        help="The daily data lookback this mode prefers (used when you select the mode in sidebar)."
+    )
+
+    # Timeframe for this mode (just like scan period)
+    tf_options = ["1d", "1wk", "1mo"]
+    default_tf = st.session_state.get("timeframe", "1d")
+    if edit_choice != "(create new)" and edit_choice in customs:
+        cdata = customs[edit_choice]
+        default_tf = cdata.get("timeframe", "1d") if isinstance(cdata, dict) else "1d"
+    mode_timeframe = st.selectbox(
+        "Preferred Timeframe (bar size) for this mode",
+        options=tf_options,
+        index=tf_options.index(default_tf) if default_tf in tf_options else 0,
+        key=f"modes_timeframe_{edit_choice or 'new'}",
+        help="Bar interval this mode prefers (1d daily, 1wk weekly, 1mo monthly)."
+    )
 
     if edit_choice in SCAN_MODE_CHOICES:
         st.info(f"You are editing the built-in '{edit_choice}'. Saving will store a custom override under the same name (it will take precedence over the original built-in everywhere).")
@@ -928,7 +1007,7 @@ with tab_modes:
                         new_s = dc_replace(new_s, **{k: type(getattr(new_s, k))(v)})
                     except Exception:
                         pass
-            customs[clean_name] = new_s
+            customs[clean_name] = {"settings": new_s, "scan_period": mode_scan_period, "timeframe": mode_timeframe}
             save_custom_modes(customs)
 
             st.success(f"Saved/updated mode '{clean_name}' (now available in sidebar).")
@@ -956,7 +1035,7 @@ with tab_modes:
                 st.success(f"Reverted '{edit_choice}' to the original built-in definition.")
                 st.rerun()
 
-    st.caption("Note: Saving under a built-in name creates/updates a **custom override** (takes precedence). Use the Reset button above to remove an override for a built-in.")
+    st.caption("Note: Saving under a built-in name creates/updates a **custom override** (takes precedence). Use the Reset button above to remove an override for a built-in. Both Scan Period and Timeframe are saved with the mode and auto-apply in the sidebar.")
 
 
 with tab_journal:
@@ -1054,8 +1133,10 @@ The scanner looks for **healthy, momentum-driven uptrends** that still have fres
 - Not a big red day (min daily change, currently relaxed)
 - RSI not extremely overbought
 - Not massively extended above its 50-day moving average
-- Weekly chart must be in a clear uptrend (higher highs/lows or price above key MA)
+- **Weekly** chart must be in a clear uptrend (higher highs/lows or price above key MA) — this is a higher-timeframe filter
 - No major bearish divergences on RSI or MACD
+
+**Timeframe used by the scanner**: Daily bars (1D), default last 1 year of data. All pillars, MACD, RSI, RVOL, structure, etc. are calculated on daily data. A weekly trend filter is also required.
 
 **2. 6 Confluence Pillars** (need at least 4 out of 6)
 - **Trend** — Price above both 20 & 50 MA + 20-MA sloping upward

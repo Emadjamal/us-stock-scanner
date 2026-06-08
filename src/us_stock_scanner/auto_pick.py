@@ -68,6 +68,7 @@ def run_scan(
     tickers: list[str] | None = None,
     universe: str = "sp500",
     period: str = "1y",
+    interval: str = "1d",
     limit: int | None = 150,
     top_picks: int = TOP_PICKS_COUNT,
     watch_count: int = WORTH_WATCHING_COUNT,
@@ -113,7 +114,7 @@ def run_scan(
         settings = settings or default_signal_settings()
 
     market, spy_df = _market_context()
-    history = fetch_history(tickers, period=period, batch_size=50)
+    history = fetch_history(tickers, period=period, interval=interval, batch_size=50)
     skipped: dict[str, str] = {}
 
     for symbol in tickers:
@@ -138,7 +139,8 @@ def run_scan(
 def run_auto_pick(
     universe: str = "sp500",
     *,
-    period: str = "1y",
+    period: str = "1y",  # lookback length (like scan_period)
+    interval: str = "1d",  # bar timeframe (1d, 1wk, etc.) — now configurable like scan_period
     limit: int | None = 150,
     top_picks: int = TOP_PICKS_COUNT,
     watch_count: int = WORTH_WATCHING_COUNT,
@@ -169,12 +171,13 @@ def run_auto_pick(
     )
 
 
-def run_single_symbol(symbol: str, *, period: str = "1y", settings: SignalSettings | None = None, mode: str | None = None) -> ScanResult:
+def run_single_symbol(symbol: str, *, period: str = "1y", interval: str = "1d", settings: SignalSettings | None = None, mode: str | None = None) -> ScanResult:
     """Analyze one ticker."""
     sym = symbol.strip().upper().replace(".", "-")
     return run_scan(
         tickers=[sym],
         period=period,
+        interval=interval,
         top_picks=1,
         watch_count=0,
         scan_mode="single",

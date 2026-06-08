@@ -12,9 +12,12 @@ def fetch_history(
     tickers: Iterable[str],
     *,
     period: str = "3mo",
+    interval: str = "1d",
     batch_size: int = 50,
 ) -> dict[str, pd.DataFrame]:
-    """Download OHLCV history in batches. Returns ticker -> DataFrame."""
+    """Download OHLCV history in batches. Returns ticker -> DataFrame.
+    interval: bar size, e.g. "1d", "1wk", "1mo" (like scan_period lookback).
+    """
     symbols = list(dict.fromkeys(tickers))
     frames: dict[str, pd.DataFrame] = {}
 
@@ -23,6 +26,7 @@ def fetch_history(
         raw = yf.download(
             chunk,
             period=period,
+            interval=interval,
             group_by="ticker",
             auto_adjust=True,
             progress=False,

@@ -214,7 +214,8 @@ def get_mode_settings(name: str | None = None) -> SignalSettings:
     # Custom user modes take precedence
     customs = load_custom_modes()
     if mode in customs:
-        return customs[mode]
+        data = customs[mode]
+        return data["settings"] if isinstance(data, dict) else data
 
     if mode in ("default", "balanced", "normal"):
         return base
@@ -302,13 +303,15 @@ def custom_modes_path() -> Path:
     return storage.get_db_path()
 
 
-def load_custom_modes() -> dict[str, SignalSettings]:
-    """Load user-defined custom modes (now from SQLite)."""
+def load_custom_modes() -> dict[str, dict]:
+    """Load user-defined custom modes (now from SQLite).
+    Returns {name: {'settings': SignalSettings, 'scan_period': str}}
+    """
     from . import storage
     return storage.load_custom_modes()
 
 
-def save_custom_modes(modes: dict[str, SignalSettings]) -> None:
+def save_custom_modes(modes: dict[str, dict]) -> None:
     """Save custom modes (now to SQLite)."""
     from . import storage
     storage.save_custom_modes(modes)
@@ -317,7 +320,9 @@ def save_custom_modes(modes: dict[str, SignalSettings]) -> None:
 def get_all_modes() -> dict[str, SignalSettings]:
     """Built-in modes + user custom modes (custom names override built-ins if conflict)."""
     modes = {m: get_mode_settings(m) for m in SCAN_MODE_CHOICES}
-    modes.update(load_custom_modes())
+    customs = load_custom_modes()
+    for name, data in customs.items():
+        modes[name] = data["settings"] if isinstance(data, dict) else data
     return modes
 
 

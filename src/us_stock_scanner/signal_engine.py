@@ -145,7 +145,7 @@ def _align_spy_length(stock_df: pd.DataFrame, spy_df: pd.DataFrame) -> pd.DataFr
     return spy.loc[spy.index.intersection(stock_df.index)]
 
 
-def analyze_symbol_v2(
+def analyze_symbol_v2(  # Uses daily data (1D bars, default 1y lookback) + weekly trend filter
     symbol: str,
     df: pd.DataFrame,
     market: MarketRegime | None = None,
@@ -217,7 +217,7 @@ def analyze_symbol_v2(
     near_high = last_high_pct >= settings.near_high_for_breakout
     pullback_to_ma = above_ma50 and abs(last - last_ma20) / last_ma20 < 0.025
 
-    # --- Required: weekly trend ---
+    # --- Required: weekly trend (higher timeframe filter on top of daily data) ---
     weekly_ok, weekly_detail = weekly_trend_bullish(df)
     if not weekly_ok:
         return None

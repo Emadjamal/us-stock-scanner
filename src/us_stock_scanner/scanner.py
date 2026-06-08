@@ -16,6 +16,7 @@ def run_scan(
     criteria: ScanCriteria,
     *,
     period: str = "3mo",
+    interval: str = "1d",
     limit: int | None = None,
     batch_size: int = 50,
 ) -> pd.DataFrame:
@@ -23,7 +24,7 @@ def run_scan(
     if limit is not None:
         tickers = tickers[:limit]
 
-    history = fetch_history(tickers, period=period, batch_size=batch_size)
+    history = fetch_history(tickers, period=period, interval=interval, batch_size=batch_size)
     rows: list[dict] = []
 
     for symbol, df in history.items():

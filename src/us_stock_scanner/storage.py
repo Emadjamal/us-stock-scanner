@@ -521,13 +521,15 @@ def update_journal_rows(updates: list[dict]) -> None:
 # Custom Modes
 # -----------------------------
 
-def load_custom_modes() -> dict[str, SignalSettings]:
-    """Load custom modes from SQLite (JSON in 'data' column)."""
+def load_custom_modes() -> dict[str, dict]:
+    """Load custom modes from SQLite (JSON in 'data' column).
+    Returns dict of name -> {'settings': SignalSettings, 'scan_period': str}
+    """
     init_db()
     conn = _get_conn()
     try:
         rows = conn.execute("SELECT name, data FROM custom_modes").fetchall()
-        modes: dict[str, SignalSettings] = {}
+        modes: dict[str, dict] = {}
         for row in rows:
             # Support both dict rows and tuple rows (libsql)
             if isinstance(row, (list, tuple)):
@@ -538,7 +540,16 @@ def load_custom_modes() -> dict[str, SignalSettings]:
                 data = row["data"]
             try:
                 sdict = json.loads(data)
-                modes[name] = SignalSettings.from_dict(sdict)
+                if isinstance(sdict, dict) and "settings" in sdict:
+                    settings = SignalSettings.from_dict(sdict["settings"])
+                    scan_period = sdict.get("scan_period", "1y")
+                    timeframe = sdict.get("timeframe", "1d")
+                else:
+                    # backward compat
+                    settings = SignalSettings.from_dict(sdict)
+                    scan_period = "1y"
+                    timeframe = "1d"
+                modes[name] = {"settings": settings, "scan_period": scan_period, "timeframe": timeframe}
             except Exception:
                 continue
         return modes
@@ -546,17 +557,29 @@ def load_custom_modes() -> dict[str, SignalSettings]:
         conn.close()
 
 
-def save_custom_modes(modes: dict[str, SignalSettings]) -> None:
-    """Save (replace) all custom modes."""
+def save_custom_modes(modes: dict[str, dict]) -> None:
+    """Save (replace) all custom modes.
+    modes[name] should be {'settings': SignalSettings, 'scan_period': str}
+    """
     init_db()
     conn = _get_conn()
     try:
         conn.execute("DELETE FROM custom_modes")
-        for name, s in modes.items():
-            serial = s.to_dict()
+        for name, data in modes.items():
+            if isinstance(data, dict) and "settings" in data:
+                serial = data["settings"].to_dict() if hasattr(data["settings"], "to_dict") else data["settings"]
+                full = {
+                    "settings": serial,
+                    "scan_period": data.get("scan_period", "1y"),
+                    "timeframe": data.get("timeframe", "1d")
+                }
+            else:
+                # backward or direct settings
+                serial = data.to_dict() if hasattr(data, "to_dict") else data
+                full = {"settings": serial, "scan_period": "1y", "timeframe": "1d"}
             conn.execute(
                 "INSERT INTO custom_modes (name, data) VALUES (?, ?)",
-                (name, json.dumps(serial)),
+                (name, json.dumps(full)),
             )
         conn.commit()
     finally:
