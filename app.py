@@ -348,6 +348,7 @@ def _do_scan(
     settings: SignalSettings | None = None,
     period: str = "1y",
     interval: str = "1d",
+    top_picks: int = 3,
 ) -> None:
     label = universe
     with st.spinner("Scanning… please wait."):
@@ -356,11 +357,11 @@ def _do_scan(
             result = run_single_symbol(sym, settings=settings, period=period, interval=interval)
             label = sym
         elif mode == "My watchlist":
-            result = run_auto_pick("watchlist", watch_count=watch_count, settings=settings, period=period, interval=interval)
+            result = run_auto_pick("watchlist", top_picks=top_picks, watch_count=watch_count, settings=settings, period=period, interval=interval)
             label = "watchlist"
         else:
             limit = None if full else 150
-            result = run_auto_pick(universe, limit=limit, watch_count=watch_count, settings=settings, period=period, interval=interval)
+            result = run_auto_pick(universe, limit=limit, top_picks=top_picks, watch_count=watch_count, settings=settings, period=period, interval=interval)
             label = universe
     st.session_state["scan_result"] = result
     st.session_state["scan_label"] = label
@@ -411,6 +412,7 @@ with st.sidebar:
         st.caption(f"Watchlist: **{len(wl)}** symbols")
         full_scan = False
 
+    top_picks = st.slider("Top picks (max)", 1, 10, 3, key="top_picks_slider")
     watch_count = st.slider("Worth watching (max)", 0, 15, 7, key="watch_count_slider")
     log_watch = st.checkbox("Log runners-up to journal", value=False)
     save_journal = st.checkbox("Save top picks to journal", value=True)
@@ -631,7 +633,8 @@ with st.sidebar:
     if st.button("Run scan", type="primary", width="stretch"):
         period = st.session_state.get("scan_period", "1y")
         tf = st.session_state.get("timeframe", "1d")
-        _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings, period=period, interval=tf)
+        tp = st.session_state.get("top_picks_slider", 3)
+        _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings, period=period, interval=tf, top_picks=tp)
         st.rerun()
     if st.button("Update outcomes", width="stretch"):
         with st.spinner("Updating…"):
@@ -669,9 +672,10 @@ with tab_scan:
         elif not result.top_picks:
             st.warning("No setups passed filters.")
         else:
-            title = "Top pick" if result.scan_mode == "single" else "Top 3 picks"
+            n = st.session_state.get("top_picks_slider", 3)
+            title = "Top pick" if result.scan_mode == "single" else f"Top {min(n, len(result.top_picks))} picks"
             st.subheader(title)
-            for rank, sig in enumerate(result.top_picks[:3], 1):
+            for rank, sig in enumerate(result.top_picks[:n], 1):
                 _render_pick(sig, rank)
                 # Approve button for active trade monitoring (new feature)
                 btn_key = f"approve_pick_{rank}_{sig.symbol}_{result.scan_label}"
@@ -772,7 +776,8 @@ with tab_watchlist:
         with st.spinner("Scanning watchlist…"):
             period = st.session_state.get("scan_period", "1y")
             tf = st.session_state.get("timeframe", "1d")
-            result = run_auto_pick("watchlist", watch_count=wc, settings=ts, period=period, interval=tf)
+            tp = st.session_state.get("top_picks_slider", 3)
+            result = run_auto_pick("watchlist", top_picks=tp, watch_count=wc, settings=ts, period=period, interval=tf)
         st.session_state["scan_result"] = result
         st.session_state["scan_label"] = "watchlist"
         st.rerun()
