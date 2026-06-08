@@ -5,6 +5,7 @@ pyyaml>=6.0.1
 rich>=13.7.0
 requests>=2.31.0
 lxml>=5.0.0
+plotly>=5.18.0   # For candlestick charts with EMAs, levels, and volume in the UI
 
 # For cloud publishing with Turso (recommended)
 libsql

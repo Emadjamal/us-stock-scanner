@@ -129,6 +129,42 @@ def _grade_class(grade: str) -> str:
     return {"A": "grade-a", "B": "grade-b"}.get(grade, "grade-c")
 
 
+def _get_reason_hint(reason: str) -> str:
+    """Very brief one-sentence explanation for common reasons so users understand the jargon."""
+    r = reason.lower()
+    if "rvol" in r and "×" in reason:
+        return "Relative Volume: today's volume vs 20-day average. 1.0× = normal. ≥1.4× = unusually strong participation / interest."
+    if "volume light" in r:
+        return "Today's volume is below average — the move has less conviction from buyers."
+    if "outperforming spy" in r:
+        return "The stock is beating the S&P 500 over the last 5 days (positive relative strength)."
+    if "confluence" in r:
+        return "Number of the 6 key pillars (Trend, Momentum, Structure, Volume, Not-overextended, Breakout/Demand) that are all firing together."
+    if "macd" in r:
+        return "MACD is a momentum oscillator. Bullish cross or rising histogram = upward momentum is building or confirming."
+    if "higher-high structure" in r or "structure" in r:
+        return "The stock keeps making new highs on the daily chart — buyers remain in control."
+    if "52-week high" in r or "near high" in r:
+        return "Price is close to its highest point in the past year. These leadership names often keep outperforming."
+    if "controlled momentum" in r:
+        return "A moderate green day (not parabolic). Sustainable strength rather than an exhaustion move."
+    if "adx" in r:
+        return "ADX measures the strength of the trend (not its direction). Higher = clearer, stronger trend in place."
+    if "rsi" in r and "ideal" in r:
+        return "RSI in the 48-65 zone is often the 'sweet spot' for healthy momentum stocks — not yet overbought."
+    if "setup:" in r or "grade" in r:
+        return "Pattern type + overall quality grade (A/B/C) based on confluence + final score."
+    if "entry:" in r:
+        return "Suggested buy price. A limit slightly below current price often gets you a better entry on a tiny pullback."
+    if "plan:" in r or "risk" in r or "t1" in r or "t2" in r:
+        return "Risk = % distance to your stop. Targets are set at 1.5× and 2.5× that risk (R-multiples). We only show ideas with decent reward-to-risk."
+    if "caution" in r or "warning" in r:
+        return "The setup isn't perfect (e.g. already extended, weak overall market, big gap). Size smaller or use a tighter stop."
+    if "weekly" in r:
+        return "Higher-timeframe (weekly) trend is bullish. We only look for long trades when the bigger picture is up."
+    return ""
+
+
 def _render_pick(sig, rank: int) -> None:
     gc = _grade_class(sig.grade)
     setup = f" · {sig.setup_type}" if sig.setup_type else ""
@@ -154,9 +190,148 @@ def _render_pick(sig, rank: int) -> None:
     t2.metric("R:R → T1", f"{sig.risk_reward_t1:.1f}:1")
     t3.metric("RS vs SPY", f"{sig.rs_vs_spy:+.1f}%")
     t4.metric("RSI / Vol", f"{sig.rsi:.0f} · {sig.rvol:.1f}×")
+
     with st.expander("Why this pick", expanded=rank == 1):
         for reason in sig.reasons:
             st.markdown(f"- {reason}")
+            hint = _get_reason_hint(reason)
+            if hint:
+                st.caption(f"💡 {hint}")
+
+    # Candlestick chart with EMAs/SMAs, golden cross visibility, volume, and trade levels (visual reasons for the pick)
+    with st.expander("📈 Candlestick + Key Patterns & Levels", expanded=False):
+        try:
+            import yfinance as yf
+            import plotly.graph_objects as go
+            from plotly.subplots import make_subplots
+
+            # Fetch more data for better pattern visibility
+            hist = yf.download(sig.symbol, period="6mo", progress=False, auto_adjust=True)
+            # Flatten columns if yfinance returns MultiIndex (common with some versions)
+            if isinstance(hist.columns, pd.MultiIndex):
+                hist.columns = [col[0] for col in hist.columns]
+            if hist.empty or len(hist) < 30:
+                st.caption("Not enough price history for a meaningful chart.")
+            else:
+                # Compute indicators used by the engine (SMA20/50) + EMAs as user requested
+                hist['SMA20'] = hist['Close'].rolling(window=20).mean()
+                hist['SMA50'] = hist['Close'].rolling(window=50).mean()
+                hist['EMA20'] = hist['Close'].ewm(span=20, adjust=False).mean()
+                hist['EMA50'] = hist['Close'].ewm(span=50, adjust=False).mean()
+
+                # Create subplots: candles on top, volume on bottom
+                fig = make_subplots(
+                    rows=2, cols=1,
+                    shared_xaxes=True,
+                    vertical_spacing=0.03,
+                    row_heights=[0.75, 0.25],
+                    subplot_titles=(f"{sig.symbol} - Candles + EMAs/SMAs (Trend & Structure)", "Volume")
+                )
+
+                # Candlestick - make them clearly visible with fill
+                fig.add_trace(
+                    go.Candlestick(
+                        x=hist.index,
+                        open=hist['Open'],
+                        high=hist['High'],
+                        low=hist['Low'],
+                        close=hist['Close'],
+                        name='Candles',
+                        increasing_line_color='#00C853',
+                        decreasing_line_color='#FF1744',
+                        increasing_fillcolor='#00C853',
+                        decreasing_fillcolor='#FF1744',
+                        increasing_line_width=1.2,
+                        decreasing_line_width=1.2
+                    ),
+                    row=1, col=1
+                )
+
+                # EMAs (as user requested) + SMAs (as used by the engine)
+                fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA20'], line=dict(color='#2196f3', width=1.5), name='EMA20'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=hist.index, y=hist['EMA50'], line=dict(color='#ff9800', width=1.5), name='EMA50'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA20'], line=dict(color='#3f51b5', width=1, dash='dot'), name='SMA20 (engine)'), row=1, col=1)
+                fig.add_trace(go.Scatter(x=hist.index, y=hist['SMA50'], line=dict(color='#f44336', width=1, dash='dot'), name='SMA50 (engine)'), row=1, col=1)
+
+                # Trade levels as horizontal lines (directly from the pick logic)
+                levels = [
+                    (sig.entry, 'Entry', '#4caf50'),
+                    (sig.stop_loss, 'Stop Loss', '#f44336'),
+                    (sig.target1, 'Target 1', '#2196f3'),
+                    (sig.target2, 'Target 2', '#9c27b0'),
+                ]
+                for price, name, color in levels:
+                    fig.add_hline(
+                        y=price,
+                        line_dash="dash",
+                        line_color=color,
+                        line_width=1.5,
+                        row=1, col=1,
+                        annotation_text=name,
+                        annotation_position="top right",
+                        annotation_font_size=10
+                    )
+
+                # Volume bars
+                colors = ['#26a69a' if close >= open else '#ef5350' for close, open in zip(hist['Close'], hist['Open'])]
+                fig.add_trace(
+                    go.Bar(
+                        x=hist.index,
+                        y=hist['Volume'],
+                        marker_color=colors,
+                        name='Volume',
+                        showlegend=False
+                    ),
+                    row=2, col=1
+                )
+
+                # Simple golden cross annotation (EMA20 crossing above EMA50 recently)
+                try:
+                    ema20 = hist['EMA20'].dropna()
+                    ema50 = hist['EMA50'].dropna()
+                    if len(ema20) > 5 and len(ema50) > 5:
+                        last_cross = (ema20.iloc[-1] > ema50.iloc[-1]) and (ema20.iloc[-5] <= ema50.iloc[-5])
+                        if last_cross:
+                            fig.add_annotation(
+                                x=ema20.index[-1],
+                                y=ema20.iloc[-1],
+                                text="Golden Cross (EMA20 > EMA50)",
+                                showarrow=True,
+                                arrowhead=2,
+                                ax=0,
+                                ay=-40,
+                                font=dict(color="#2196f3", size=11),
+                                row=1, col=1
+                            )
+                except Exception:
+                    pass
+
+                # Layout - make candles prominent
+                fig.update_layout(
+                    height=580,
+                    xaxis_rangeslider_visible=False,
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, font=dict(size=10)),
+                    margin=dict(l=30, r=10, t=30, b=10),
+                    hovermode="x unified",
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)'
+                )
+                fig.update_xaxes(showgrid=True, gridwidth=0.5, gridcolor='rgba(128,128,128,0.2)')
+                fig.update_yaxes(title_text="Price", row=1, col=1, showgrid=True, gridwidth=0.5, gridcolor='rgba(128,128,128,0.2)')
+                fig.update_yaxes(title_text="Volume", row=2, col=1, showgrid=True, gridwidth=0.5, gridcolor='rgba(128,128,128,0.2)')
+
+                st.plotly_chart(fig, use_container_width=True)
+
+                # Visual context for the pick reasons
+                st.caption(
+                    f"**Visual reasons for this pick:** "
+                    f"Candles show real price action & structure (higher highs etc.). "
+                    f"EMA20 (blue) / EMA50 (orange) + SMA20/SMA50 (dotted) show trend, momentum & golden cross. "
+                    f"Colored volume bars support the RVOL reason. "
+                    f"Dashed lines = exact Entry / Stop / T1 / T2 that make this a valid trade."
+                )
+        except Exception as e:
+            st.caption(f"Advanced chart unavailable (install plotly if missing: pip install plotly). Simple view: {e}")
 
 
 def _do_scan(
@@ -869,6 +1044,46 @@ with tab_journal:
 with tab_help:
     st.markdown(
         """
+### How the Scanner Finds Picks (Core Logic)
+
+The scanner looks for **healthy, momentum-driven uptrends** that still have fresh buying interest and are not too stretched.
+
+**1. Hard Gates (must pass or the stock is rejected early)**
+- Minimum price and average volume (liquidity filter)
+- Positive 5-day relative strength vs SPY (the stock must be outperforming the market)
+- Not a big red day (min daily change, currently relaxed)
+- RSI not extremely overbought
+- Not massively extended above its 50-day moving average
+- Weekly chart must be in a clear uptrend (higher highs/lows or price above key MA)
+- No major bearish divergences on RSI or MACD
+
+**2. 6 Confluence Pillars** (need at least 4 out of 6)
+- **Trend** — Price above both 20 & 50 MA + 20-MA sloping upward
+- **Momentum** — MACD histogram positive and improving, or a fresh bullish crossover
+- **Structure** — Making higher highs on the daily chart
+- **Volume (RVOL)** — Today's volume significantly above the 20-day average (shows real participation)
+- **Not overextended** — RSI not too high, price not too far above the 50-MA, not at the top of the Bollinger Band
+- **Breakout / Demand** — Either trading near its 52-week high (leadership) **or** a strong green day with volume
+
+**3. Scoring + Bonuses / Penalties**
+- Each passed pillar gives points.
+- Extra bonuses for: being near all-time highs, "controlled" green days, strong ADX (trend strength), RSI in the momentum sweet spot (~48-65), and strong outperformance vs SPY.
+- Penalties for warnings (large gaps, weak overall market, already very extended, etc.).
+- Final score + confluence level → letter Grade (A/B/C) and whether it clears the minimum score threshold (thresholds are softer in strong markets, stricter in weak ones).
+
+**4. Trade Plan**
+- Stop placed below a recent swing low or using ATR (average true range).
+- Targets set at 1.5× and 2.5× the risk (R-multiples).
+- Only shows ideas that meet a minimum reward-to-risk ratio (currently 1.2:1).
+
+**RVOL explained (common question)**
+RVOL = Relative Volume = today's volume ÷ 20-day average volume.  
+1.0× = perfectly average. 1.4×+ = unusually high interest (one of the strongest confirming signals).
+
+Different **Strategy Modes** (Default / Conservative / Swing / Aggressive / Breakout) simply relax or tighten the gates and bonus weights above. You can edit every single number in the **Modes** tab.
+
+The system is a **confluence + momentum + relative-strength** scanner, not a pure breakout hunter or mean-reversion tool.
+
 ### Scan modes (sidebar)
 | Mode | Use for |
 |------|---------|

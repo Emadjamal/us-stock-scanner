@@ -32,6 +32,20 @@ def _row_factory(cursor, row):
         return row
     return {col[0]: row[idx] for idx, col in enumerate(cursor.description)}
 
+
+def _fetch_first(conn, query, params=()):
+    """Safely fetch the first column from a query.
+    Works whether the driver returns tuples, lists, or dicts (sqlite3 vs libsql).
+    """
+    row = conn.execute(query, params).fetchone()
+    if row is None:
+        return None
+    if isinstance(row, (list, tuple)):
+        return row[0]
+    if isinstance(row, dict):
+        return next(iter(row.values()))
+    return row
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -77,6 +91,12 @@ def get_db_path() -> Path | str:
     return DB_PATH
 
 
+def _get_local_db_path() -> Path:
+    """Always return the local SQLite file path (used for fallback when libsql is missing)."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    return DB_PATH
+
+
 def is_using_turso() -> bool:
     """True if we are configured to use a remote Turso / libSQL database."""
     return bool(os.getenv("TURSO_DATABASE_URL") or os.getenv("LIBSQL_URL"))
@@ -104,10 +124,23 @@ def _get_conn():
             # Fall back gracefully with a clear message (user can pip install libsql)
             print("[storage] WARNING: libsql not installed but Turso URL detected. "
                   "Falling back to local SQLite. Run: pip install libsql")
-            # continue to local below
+            # IMPORTANT: Force the real local path here.
+            # get_db_path() would still return the Turso URL (because env vars are set),
+            # which would make sqlite3.connect() fail with "unable to open database file".
+            local_path = _get_local_db_path()
+            conn = sqlite3.connect(local_path, check_same_thread=False)
+            conn.row_factory = _row_factory
+            # Enable WAL mode for better concurrent reads/writes (local only)
+            try:
+                conn.execute("PRAGMA journal_mode=WAL;")
+                conn.execute("PRAGMA synchronous=NORMAL;")
+            except Exception:
+                pass
+            return conn
 
-    # Local SQLite (original behavior)
-    conn = sqlite3.connect(get_db_path(), check_same_thread=False)
+    # Normal local SQLite path (no Turso env vars detected at all)
+    local_path = _get_local_db_path()
+    conn = sqlite3.connect(local_path, check_same_thread=False)
     conn.row_factory = _row_factory
     # Enable WAL mode for better concurrent reads/writes (local only)
     try:
@@ -180,7 +213,7 @@ def init_db() -> None:
 def _migrate_from_legacy_files(conn: sqlite3.Connection) -> None:
     """Import data from old CSV/TXT/YAML files if the corresponding tables are empty."""
     # Watchlist
-    count = conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0]
+    count = _fetch_first(conn, "SELECT COUNT(*) FROM watchlist") or 0
     if count == 0:
         legacy_watch = PROJECT_ROOT / "data" / "watchlist.txt"
         if legacy_watch.exists():
@@ -197,7 +230,7 @@ def _migrate_from_legacy_files(conn: sqlite3.Connection) -> None:
                 conn.commit()
 
     # Signals log
-    count = conn.execute("SELECT COUNT(*) FROM signals_log").fetchone()[0]
+    count = _fetch_first(conn, "SELECT COUNT(*) FROM signals_log") or 0
     if count == 0:
         legacy_csv = PROJECT_ROOT / "data" / "signals_log.csv"
         if legacy_csv.exists():
@@ -214,7 +247,7 @@ def _migrate_from_legacy_files(conn: sqlite3.Connection) -> None:
                 pass  # don't crash on bad legacy file
 
     # Custom modes
-    count = conn.execute("SELECT COUNT(*) FROM custom_modes").fetchone()[0]
+    count = _fetch_first(conn, "SELECT COUNT(*) FROM custom_modes") or 0
     if count == 0:
         for candidate in [
             PROJECT_ROOT / "data" / "custom_modes.yaml",
