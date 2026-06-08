@@ -11,6 +11,23 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+# Bridge Streamlit secrets (Cloud dashboard or .streamlit/secrets.toml for local tests)
+# into os.environ *before* any us_stock_scanner imports. This ensures storage.py's
+# os.getenv("TURSO_*") / is_using_turso() see the values on Streamlit Cloud.
+import os
+try:
+    if hasattr(st, "secrets"):
+        # Accessing st.secrets can raise if no secrets.toml at all; guard heavily.
+        try:
+            secrets_dict = dict(st.secrets)
+        except Exception:
+            secrets_dict = {}
+        for _k in ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "LIBSQL_URL", "LIBSQL_AUTH_TOKEN"):
+            if _k not in os.environ and _k in secrets_dict:
+                os.environ[_k] = str(secrets_dict[_k])
+except Exception:
+    pass
+
 # Make the package importable whether running locally (pip install -e .)
 # or on Streamlit Cloud / other hosts where only the repo is checked out.
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
@@ -30,7 +47,7 @@ from us_stock_scanner.config import (
 from dataclasses import fields as dc_fields, replace as dc_replace
 from us_stock_scanner.journal import append_scan, journal_path, load_journal
 from us_stock_scanner.outcomes import update_outcomes
-from us_stock_scanner.storage import get_active_trades, monitor_active_trades, close_trade, approve_trade
+from us_stock_scanner.storage import get_active_trades, monitor_active_trades, close_trade, approve_trade, is_using_turso
 from us_stock_scanner.presets import get_preset
 from us_stock_scanner.watchlist import (
     add_symbols,
@@ -494,6 +511,8 @@ with st.sidebar:
         key="timeframe",
         help="Bar interval for the scan: daily (1d, default & recommended), weekly (1wk), or monthly (1mo). Affects indicators and the weekly trend filter. Non-daily is experimental. Saved per custom mode just like Scan Period."
     )
+    if timeframe != "1d":
+        st.caption("⚠️ Non-daily timeframe: the weekly trend gate is skipped (see Help). Use 1d for normal scans.")
 
     # --- Tuning for main strategy (unified, not hard-coded) ---
     with st.expander("⚙️ Fine-tune current mode (advanced)", expanded=False):
@@ -634,6 +653,8 @@ with st.sidebar:
         period = st.session_state.get("scan_period", "1y")
         tf = st.session_state.get("timeframe", "1d")
         tp = st.session_state.get("top_picks_slider", 3)
+        current_mode = st.session_state.get("strategy_mode", "default")
+        st.session_state["last_scan_params"] = {"mode": current_mode, "period": period, "interval": tf, "top_picks": tp}
         _do_scan(scan_mode, universe, single_sym, full_scan, watch_count, log_watch, save_journal, settings=tune_settings, period=period, interval=tf, top_picks=tp)
         st.rerun()
     if st.button("Update outcomes", width="stretch"):
@@ -654,6 +675,12 @@ with tab_scan:
         st.info("Choose scan type in the sidebar, then click **Run scan**.")
     else:
         st.caption(f"Scan: **{result.scan_label}** ({result.scan_mode})")
+        lp = st.session_state.get("last_scan_params") or {}
+        db_label = "Turso (remote)" if is_using_turso() else "local SQLite"
+        p = lp.get("period", "1y")
+        tf = lp.get("interval", "1d")
+        md = lp.get("mode", st.session_state.get("strategy_mode", "default"))
+        st.caption(f"Effective: mode=`{md}` · period=`{p}` · timeframe=`{tf}` · db=`{db_label}`")
         if result.market:
             m = result.market
             css = "market-ok" if m.bullish else "market-warn"
@@ -777,6 +804,7 @@ with tab_watchlist:
             period = st.session_state.get("scan_period", "1y")
             tf = st.session_state.get("timeframe", "1d")
             tp = st.session_state.get("top_picks_slider", 3)
+            st.session_state["last_scan_params"] = {"mode": current_mode, "period": period, "interval": tf, "top_picks": tp}
             result = run_auto_pick("watchlist", top_picks=tp, watch_count=wc, settings=ts, period=period, interval=tf)
         st.session_state["scan_result"] = result
         st.session_state["scan_label"] = "watchlist"

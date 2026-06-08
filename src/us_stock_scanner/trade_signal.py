@@ -79,11 +79,11 @@ def _strength(score: float) -> str:
     return "Weak"
 
 
-def analyze_symbol(symbol: str, df: pd.DataFrame, market=None, settings: SignalSettings | None = None) -> TradeSignal | None:
+def analyze_symbol(symbol: str, df: pd.DataFrame, market=None, settings: SignalSettings | None = None, interval: str = "1d") -> TradeSignal | None:
     """Delegate to v2 engine (stricter confluence logic)."""
     from us_stock_scanner.signal_engine import analyze_symbol_v2
 
-    return analyze_symbol_v2(symbol, df, market, settings=settings)
+    return analyze_symbol_v2(symbol, df, market, settings=settings, interval=interval)
 
 
 def find_all_signals(
@@ -95,5 +95,5 @@ def find_all_signals(
 ) -> list[TradeSignal]:
     from us_stock_scanner.signal_engine import find_all_signals_v2
 
-    signals = find_all_signals_v2(history, market, settings=settings)
+    signals = find_all_signals_v2(history, market, settings=settings, interval="1d")
     return [s for s in signals if s.score >= min_score]

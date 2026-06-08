@@ -120,10 +120,10 @@ def run_scan(
     for symbol in tickers:
         if symbol not in history:
             skipped[symbol] = "No market data from Yahoo Finance"
-        elif analyze_symbol_v2(symbol, history[symbol], market, spy_df, settings=settings) is None:
-            skipped[symbol] = diagnose_rejection(symbol, history[symbol], market, spy_df, settings=settings)
+        elif analyze_symbol_v2(symbol, history[symbol], market, spy_df, settings=settings, interval=interval) is None:
+            skipped[symbol] = diagnose_rejection(symbol, history[symbol], market, spy_df, settings=settings, interval=interval)
 
-    all_signals = find_all_signals_v2(history, market, spy_df, settings=settings)
+    all_signals = find_all_signals_v2(history, market, spy_df, settings=settings, interval=interval)
     picks, watching = _rank_signals(all_signals, top_picks=top_picks, watch_count=watch_count)
 
     return ScanResult(

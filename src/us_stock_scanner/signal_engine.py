@@ -145,12 +145,13 @@ def _align_spy_length(stock_df: pd.DataFrame, spy_df: pd.DataFrame) -> pd.DataFr
     return spy.loc[spy.index.intersection(stock_df.index)]
 
 
-def analyze_symbol_v2(  # Uses daily data (1D bars, default 1y lookback) + weekly trend filter
+def analyze_symbol_v2(  # Uses daily data (1D bars, default 1y lookback) + weekly trend filter (skipped for non-1d)
     symbol: str,
     df: pd.DataFrame,
     market: MarketRegime | None = None,
     spy_df: pd.DataFrame | None = None,
     settings: SignalSettings | None = None,
+    interval: str = "1d",
 ) -> TradeSignal | None:
     if len(df) < 60:
         return None
@@ -217,10 +218,15 @@ def analyze_symbol_v2(  # Uses daily data (1D bars, default 1y lookback) + weekl
     near_high = last_high_pct >= settings.near_high_for_breakout
     pullback_to_ma = above_ma50 and abs(last - last_ma20) / last_ma20 < 0.025
 
-    # --- Required: weekly trend (higher timeframe filter on top of daily data) ---
-    weekly_ok, weekly_detail = weekly_trend_bullish(df)
-    if not weekly_ok:
-        return None
+    # --- Required: weekly trend (higher timeframe filter). Only enforced for daily (1d) scans.
+    # Non-daily (1wk/1mo) are experimental; the weekly gate is skipped so you can still use
+    # the scanner for higher timeframe overviews without everything being rejected.
+    if interval == "1d":
+        weekly_ok, weekly_detail = weekly_trend_bullish(df)
+        if not weekly_ok:
+            return None
+    else:
+        weekly_detail = "Higher-TF (weekly) filter skipped for non-daily timeframe"
 
     # --- Required: relative strength vs SPY ---
     rs_vs_spy = 0.0
@@ -471,6 +477,7 @@ def diagnose_rejection(
     market: MarketRegime | None = None,
     spy_df: pd.DataFrame | None = None,
     settings: SignalSettings | None = None,
+    interval: str = "1d",
 ) -> str:
     """Why a symbol did not produce a long signal (for single-ticker / watchlist UI)."""
     if len(df) < 60:
@@ -506,9 +513,13 @@ def diagnose_rejection(
     ma50 = float(moving_average(close, 50, "sma").iloc[-1])
     extension_pct = _extended_above_ma(last, ma50)
 
-    weekly_ok, weekly_detail = weekly_trend_bullish(df)
-    if not weekly_ok:
-        return weekly_detail
+    # Weekly gate only for daily scans (same logic as analyze_symbol_v2)
+    if interval == "1d":
+        weekly_ok, weekly_detail = weekly_trend_bullish(df)
+        if not weekly_ok:
+            return weekly_detail
+    else:
+        weekly_detail = "Higher-TF (weekly) filter skipped for non-daily timeframe"
 
     rs_vs_spy = 0.0
     if spy_df is not None and not spy_df.empty:
@@ -547,10 +558,11 @@ def find_all_signals_v2(
     market: MarketRegime | None = None,
     spy_df: pd.DataFrame | None = None,
     settings: SignalSettings | None = None,
+    interval: str = "1d",
 ) -> list[TradeSignal]:
     candidates: list[TradeSignal] = []
     for symbol, df in history.items():
-        sig = analyze_symbol_v2(symbol, df, market, spy_df, settings=settings)
+        sig = analyze_symbol_v2(symbol, df, market, spy_df, settings=settings, interval=interval)
         if sig:
             candidates.append(sig)
     candidates.sort(key=lambda s: s.score, reverse=True)
