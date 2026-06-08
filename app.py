@@ -205,8 +205,8 @@ def _render_pick(sig, rank: int) -> None:
     with st.expander("📈 Candlestick + Key Patterns & Levels", expanded=False):
         try:
             import yfinance as yf
-            import plotly.graph_objects as go
-            from plotly.subplots import make_subplots
+            import plotly.graph_objects as go  # type: ignore[import-not-found]
+            from plotly.subplots import make_subplots  # type: ignore[import-not-found]
 
             # Fetch more data for better pattern visibility
             hist = yf.download(sig.symbol, period="6mo", progress=False, auto_adjust=True)
@@ -415,7 +415,7 @@ with st.sidebar:
     top_picks = st.slider("Top picks (max)", 1, 10, 3, key="top_picks_slider")
     watch_count = st.slider("Worth watching (max)", 0, 15, 7, key="watch_count_slider")
     log_watch = st.checkbox("Log runners-up to journal", value=False)
-    save_journal = st.checkbox("Save top picks to journal", value=True)
+    save_journal = st.checkbox("Save top picks to journal", value=False)
     st.divider()
 
     # --- High-level Scan Mode (tunes the engine presets) ---
