@@ -716,8 +716,17 @@ with tab_scan:
 
         # Signals found (how many cleared the full engine before picking top N)
         sigs = getattr(result, "signals_found", 0)
-        if sigs or result.top_picks or result.worth_watching:
-            st.caption(f"Signals found (passed all gates + confluence + score + R:R): **{sigs}**  |  Top picks shown: {len(result.top_picks)}  |  Worth watching: {len(result.worth_watching)}")
+        attempted = getattr(result, "attempted", 0)
+        fetched = getattr(result, "fetched", 0)
+        mkt = getattr(result, "market_summary", "")
+
+        if sigs or result.top_picks or result.worth_watching or attempted:
+            st.caption(
+                f"Signals found (passed all gates + confluence + score + R:R): **{sigs}**  |  "
+                f"Top picks: {len(result.top_picks)}  |  Worth watching: {len(result.worth_watching)}"
+            )
+            if attempted:
+                st.caption(f"Tickers: attempted={attempted} · fetched with data={fetched} · market={mkt or '—'}")
         if result.market:
             m = result.market
             css = "market-ok" if m.bullish else "market-warn"
@@ -803,6 +812,35 @@ with tab_scan:
                     width="stretch",
                     hide_index=True,
                 )
+
+        # === Rich copy-paste friendly diagnostics (P0 parity debugging) ===
+        # Always shown after a scan so user can easily report exact conditions
+        with st.expander("📋 Scan Diagnostics (copy this when reporting local vs cloud differences)", expanded=False):
+            lp = st.session_state.get("last_scan_params") or {}
+            gs = st.session_state.get("last_scan_settings") or {}
+            db_label = "Turso (remote)" if is_using_turso() else "local SQLite"
+
+            diag_lines = []
+            diag_lines.append(f"Mode: {lp.get('mode', 'unknown')}")
+            diag_lines.append(f"Period: {lp.get('period', '1y')} | Timeframe: {lp.get('interval', '1d')} | TopPicks: {lp.get('top_picks', 3)}")
+            diag_lines.append(f"DB: {db_label}")
+            diag_lines.append(f"Attempted: {getattr(result, 'attempted', 0)} | Fetched: {getattr(result, 'fetched', 0)}")
+            diag_lines.append(f"Signals found: {getattr(result, 'signals_found', 0)} | Top picks: {len(result.top_picks)} | Worth watching: {len(result.worth_watching)}")
+            diag_lines.append(f"Market: {getattr(result, 'market_summary', '—')}")
+            if gs:
+                diag_lines.append(f"Gates: min_chg={gs.get('min_chg')} | max_rsi={gs.get('max_rsi')} | min_rvol={gs.get('min_rvol')} | min_conf={gs.get('min_conf')} | min_score={gs.get('min_score')}")
+            diag_lines.append(f"Skipped: {len(result.skipped)}")
+
+            diag_text = "\n".join(diag_lines)
+            st.code(diag_text, language="text")
+
+            if result.skipped:
+                # Show top rejection reasons for quick comparison
+                from collections import Counter
+                top_reasons = Counter(result.skipped.values()).most_common(5)
+                st.markdown("**Top rejection reasons:**")
+                for reason, count in top_reasons:
+                    st.caption(f"- ({count}x) {reason[:90]}{'...' if len(reason) > 90 else ''}")
 
         if st.session_state.get("last_journal"):
             st.success(f"Journal saved: `{st.session_state['last_journal']}`")

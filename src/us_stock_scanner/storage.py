@@ -349,22 +349,26 @@ def watchlist_path() -> Path | str:
 
 def load_journal() -> pd.DataFrame:
     """Return journal as DataFrame (same shape as before).
-    Works for both local sqlite3 and remote libsql/Turso (falls back to manual fetch if pandas can't use the conn directly).
+    Always uses manual cursor fetch + explicit dict construction.
+    This is required because we set a custom row_factory (for dict rows) on local
+    sqlite3 connections, and pd.read_sql_query misbehaves (returns column names as data values)
+    when row_factory is active. The manual path works for both sqlite3 (with or without
+    our row_factory) and libsql/Turso.
     """
     init_db()
     conn = _get_conn()
     try:
-        try:
-            df = pd.read_sql_query("SELECT * FROM signals_log", conn)
-        except Exception:
-            # Fallback for libsql remote or other non-standard connections
-            cur = conn.execute("SELECT * FROM signals_log")
-            rows = cur.fetchall()
-            if not rows:
-                return pd.DataFrame(columns=JOURNAL_COLUMNS)
-            # Try to get column names
-            cols = [d[0] for d in cur.description] if cur.description else JOURNAL_COLUMNS
-            df = pd.DataFrame([dict(zip(cols, r)) if not isinstance(r, dict) else r for r in rows])
+        # Always use manual path for reliability (avoids pandas + row_factory issues on local,
+        # and libsql compatibility on remote).
+        cur = conn.execute("SELECT * FROM signals_log")
+        rows = cur.fetchall()
+        if not rows:
+            return pd.DataFrame(columns=JOURNAL_COLUMNS)
+
+        cols = [d[0] for d in cur.description] if cur.description else JOURNAL_COLUMNS
+        df = pd.DataFrame(
+            [dict(zip(cols, r)) if not isinstance(r, dict) else r for r in rows]
+        )
 
         if df.empty:
             return pd.DataFrame(columns=JOURNAL_COLUMNS)

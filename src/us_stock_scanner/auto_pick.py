@@ -36,6 +36,10 @@ class ScanResult:
     scan_label: str = "sp500"
     skipped: dict[str, str] = field(default_factory=dict)
     signals_found: int = 0  # number that passed analyze_symbol_v2 (all gates + confluence + min score + R:R) before top_picks/watch ranking
+    # Diagnostics for local vs cloud parity investigations
+    attempted: int = 0
+    fetched: int = 0
+    market_summary: str = ""
 
 
 def _market_context() -> tuple[MarketRegime | None, object]:
@@ -97,7 +101,7 @@ def run_scan(
             scan_label = scan_label or universe
 
     if not tickers:
-        return ScanResult(scan_mode=scan_mode, scan_label=scan_label or "empty", signals_found=0)
+        return ScanResult(scan_mode=scan_mode, scan_label=scan_label or "empty", signals_found=0, attempted=0, fetched=0)
 
     # Resolve settings: mode first, then explicit settings as overrides
     if mode:
@@ -127,6 +131,10 @@ def run_scan(
     all_signals = find_all_signals_v2(history, market, spy_df, settings=settings, interval=interval)
     picks, watching = _rank_signals(all_signals, top_picks=top_picks, watch_count=watch_count)
 
+    market_summary = ""
+    if market:
+        market_summary = f"{'Bullish' if market.bullish else 'Weak'} (SPY {market.spy_change_pct:+.1f}%)"
+
     return ScanResult(
         top_picks=picks,
         worth_watching=watching,
@@ -135,6 +143,9 @@ def run_scan(
         scan_label=scan_label or scan_mode,
         skipped=skipped,
         signals_found=len(all_signals),
+        attempted=len(tickers) if tickers else 0,
+        fetched=len(history),
+        market_summary=market_summary,
     )
 
 
