@@ -221,15 +221,15 @@ def _render_pick(sig, rank: int) -> None:
     # Candlestick chart with EMAs/SMAs, golden cross visibility, volume, and trade levels (visual reasons for the pick)
     with st.expander("📈 Candlestick + Key Patterns & Levels", expanded=False):
         try:
-            import yfinance as yf
             import plotly.graph_objects as go  # type: ignore[import-not-found]
             from plotly.subplots import make_subplots  # type: ignore[import-not-found]
 
-            # Fetch more data for better pattern visibility
-            hist = yf.download(sig.symbol, period="6mo", progress=False, auto_adjust=True)
-            # Flatten columns if yfinance returns MultiIndex (common with some versions)
-            if isinstance(hist.columns, pd.MultiIndex):
-                hist.columns = [col[0] for col in hist.columns]
+            # Use the shared (cached) fetch_history so the 6mo chart benefits from the
+            # same cache as scans. This improves perceived perf when viewing multiple picks
+            # and keeps data consistent with what the engine saw.
+            from us_stock_scanner.data import fetch_history
+            h = fetch_history([sig.symbol], period="6mo", interval="1d")
+            hist = h.get(sig.symbol, pd.DataFrame())
             if hist.empty or len(hist) < 30:
                 st.caption("Not enough price history for a meaningful chart.")
             else:
@@ -326,6 +326,64 @@ def _render_pick(sig, rank: int) -> None:
                 except Exception:
                     pass
 
+                # Additional pattern visuals in the candlestick expander (from roadmap).
+                # These highlight the exact reasons the engine picked the ticker:
+                # higher-high structure, the swing low used for stop placement, and setup classification.
+                try:
+                    # Recent higher highs (supports the "Structure" pillar + "higher-high structure" reason)
+                    highs = hist['High']
+                    hh = []
+                    for i in range(3, len(highs) - 3):
+                        if (highs.iloc[i] > highs.iloc[i-1] > highs.iloc[i-2] and
+                            highs.iloc[i] > highs.iloc[i+1] > highs.iloc[i+2]):
+                            hh.append((highs.index[i], highs.iloc[i]))
+                    for d, price in hh[-4:]:
+                        fig.add_trace(
+                            go.Scatter(
+                                x=[d], y=[price * 1.015],
+                                mode="markers+text",
+                                marker=dict(symbol="triangle-up", size=7, color="#22c55e"),
+                                text=["HH"], textposition="top center",
+                                textfont=dict(size=8, color="#22c55e"),
+                                showlegend=False,
+                            ),
+                            row=1, col=1
+                        )
+
+                    # Approximate recent swing low (engine uses a similar recent low.tail(10).min() for the stop)
+                    recent_low_idx = hist['Low'].tail(15).idxmin()
+                    recent_low_price = hist.loc[recent_low_idx, 'Low']
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[recent_low_idx], y=[recent_low_price * 0.985],
+                            mode="markers+text",
+                            marker=dict(symbol="triangle-down", size=8, color="#ef4444"),
+                            text=["Swing Low"], textposition="bottom center",
+                            textfont=dict(size=8, color="#ef4444"),
+                            showlegend=False,
+                        ),
+                        row=1, col=1
+                    )
+
+                    # Setup type context (what the engine saw: pullback / breakout / momentum / continuation)
+                    setup = getattr(sig, "setup_type", "continuation") or "continuation"
+                    setup_text = {
+                        "pullback": "Pullback setup",
+                        "breakout": "Breakout / near highs",
+                        "momentum": "Momentum day",
+                        "continuation": "Trend continuation",
+                    }.get(setup, setup.title())
+                    fig.add_annotation(
+                        x=hist.index[-1],
+                        y=hist['Close'].iloc[-1] * 1.025,
+                        text=setup_text,
+                        showarrow=False,
+                        font=dict(size=9, color="#64748b"),
+                        row=1, col=1
+                    )
+                except Exception:
+                    pass
+
                 # Layout - make candles prominent
                 fig.update_layout(
                     height=580,
@@ -348,7 +406,9 @@ def _render_pick(sig, rank: int) -> None:
                     f"Candles show real price action & structure (higher highs etc.). "
                     f"EMA20 (blue) / EMA50 (orange) + SMA20/SMA50 (dotted) show trend, momentum & golden cross. "
                     f"Colored volume bars support the RVOL reason. "
-                    f"Dashed lines = exact Entry / Stop / T1 / T2 that make this a valid trade."
+                    f"Dashed lines = exact Entry / Stop / T1 / T2. "
+                    f"Green HH markers = higher-high structure. Red triangle = recent swing low (stop basis). "
+                    f"Small text = engine's setup classification (pullback/breakout/etc)."
                 )
         except Exception as e:
             st.caption(f"Advanced chart unavailable (install plotly if missing: pip install plotly). Simple view: {e}")

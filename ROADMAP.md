@@ -54,10 +54,10 @@
 - Minor UX: easier "reset to defaults", better warnings for non-1d scans, copyable full debug report.
 
 ### Nice-to-Haves / Future
-- Caching layer for yfinance within a scan session.
-- More pattern detection visuals in the candlestick expander.
+- Caching layer for yfinance within a scan session. **(done)**
+- More pattern detection visuals in the candlestick expander. **(done: HH markers, swing low, setup annotations)**
 - True scheduled background jobs (without relying on hosting "always on").
-- Performance improvements for full-index scans.
+- Performance improvements for full-index scans. **(done: module-level per-ticker+period+interval cache + chart now uses cached fetch)**
 - Optional "paper trading" simulation mode.
 
 ## How to Work on This Roadmap
