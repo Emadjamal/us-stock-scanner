@@ -820,13 +820,27 @@ with tab_scan:
             gs = st.session_state.get("last_scan_settings") or {}
             db_label = "Turso (remote)" if is_using_turso() else "local SQLite"
 
+            attempted = getattr(result, 'attempted', 0)
+            fetched = getattr(result, 'fetched', 0)
+            sigs = getattr(result, 'signals_found', 0)
+            mkt = getattr(result, 'market_summary', '')
+
+            # Fallback for results saved before we added attempted/fetched/market_summary fields
+            if attempted == 0 and (len(result.skipped) or sigs):
+                attempted = len(result.skipped) + sigs
+            if fetched == 0 and attempted > 0:
+                fetched = attempted   # best guess when old result
+
+            if not mkt:
+                mkt = "— (market info not captured in this result)"
+
             diag_lines = []
             diag_lines.append(f"Mode: {lp.get('mode', 'unknown')}")
             diag_lines.append(f"Period: {lp.get('period', '1y')} | Timeframe: {lp.get('interval', '1d')} | TopPicks: {lp.get('top_picks', 3)}")
             diag_lines.append(f"DB: {db_label}")
-            diag_lines.append(f"Attempted: {getattr(result, 'attempted', 0)} | Fetched: {getattr(result, 'fetched', 0)}")
-            diag_lines.append(f"Signals found: {getattr(result, 'signals_found', 0)} | Top picks: {len(result.top_picks)} | Worth watching: {len(result.worth_watching)}")
-            diag_lines.append(f"Market: {getattr(result, 'market_summary', '—')}")
+            diag_lines.append(f"Attempted: {attempted} | Fetched: {fetched}")
+            diag_lines.append(f"Signals found: {sigs} | Top picks: {len(result.top_picks)} | Worth watching: {len(result.worth_watching)}")
+            diag_lines.append(f"Market: {mkt}")
             if gs:
                 diag_lines.append(f"Gates: min_chg={gs.get('min_chg')} | max_rsi={gs.get('max_rsi')} | min_rvol={gs.get('min_rvol')} | min_conf={gs.get('min_conf')} | min_score={gs.get('min_score')}")
             diag_lines.append(f"Skipped: {len(result.skipped)}")
