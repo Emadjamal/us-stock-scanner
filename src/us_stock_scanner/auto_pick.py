@@ -42,13 +42,6 @@ class ScanResult:
     market_summary: str = ""
 
 
-def _market_context() -> tuple[MarketRegime | None, object]:
-    spy_frames = fetch_history(["SPY"], period="1y", batch_size=1)
-    spy_df = spy_frames.get("SPY")
-    market = analyze_market_regime(spy_df) if spy_df is not None else None
-    return market, spy_df
-
-
 def _rank_signals(
     all_signals: list[TradeSignal],
     *,
@@ -118,8 +111,24 @@ def run_scan(
     else:
         settings = settings or default_signal_settings()
 
-    market, spy_df = _market_context()
-    history = fetch_history(tickers, period=period, interval=interval, batch_size=50)
+    # Always fetch SPY together with the requested tickers in the *same* yfinance call.
+    # This guarantees we have consistent SPY data for:
+    #   - market regime analysis
+    #   - relative strength (RS vs SPY) calculations
+    # Previously a separate _market_context() SPY fetch could fail (or return bad data)
+    # while the main batch succeeded → all symbols got rs_vs_spy=0.0 and hard-failed the RS gate.
+    # This was the root cause of "0 signals on cloud, 18 on local" with identical settings.
+    fetch_tickers = list(dict.fromkeys([t for t in tickers] + ["SPY"]))
+    history = fetch_history(fetch_tickers, period=period, interval=interval, batch_size=50)
+
+    spy_df = history.get("SPY")
+    # Remove SPY from the history passed to find_all_signals_v2 unless it was explicitly requested
+    # (so it doesn't appear as a "pick" for a limited universe scan).
+    requested = {t.upper() for t in tickers}
+    history = {k: v for k, v in history.items() if k.upper() in requested}
+
+    market = analyze_market_regime(spy_df) if spy_df is not None and not getattr(spy_df, "empty", False) else None
+
     skipped: dict[str, str] = {}
 
     for symbol in tickers:

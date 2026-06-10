@@ -831,8 +831,10 @@ with tab_scan:
             if fetched == 0 and attempted > 0:
                 fetched = attempted   # best guess when old result
 
-            if not mkt:
-                mkt = "— (market info not captured in this result)"
+            if not mkt or mkt == "— (market info not captured in this result)":
+                # Provide a friendlier message; the root cause (missing SPY for RS/market)
+                # is now mitigated by fetching SPY together with the main tickers.
+                mkt = getattr(result, "market_summary", "") or "— (SPY context not available for this result)"
 
             diag_lines = []
             diag_lines.append(f"Mode: {lp.get('mode', 'unknown')}")
