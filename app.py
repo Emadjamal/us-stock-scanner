@@ -245,7 +245,7 @@ def _render_pick(sig, rank: int) -> None:
                     shared_xaxes=True,
                     vertical_spacing=0.03,
                     row_heights=[0.75, 0.25],
-                    subplot_titles=(f"{sig.symbol} - Candles + EMAs/SMAs + Fib/Elliott levels (Trend & Structure)", "Volume")
+                    subplot_titles=(f"{sig.symbol} - Candles + EMAs/SMAs (Trend & Structure)", "Volume")
                 )
 
                 # Candlestick - make them clearly visible with fill
@@ -291,38 +291,6 @@ def _render_pick(sig, rank: int) -> None:
                         annotation_position="top right",
                         annotation_font_size=10
                     )
-
-                # Heuristic Fibonacci retracements / extensions (commonly used in Elliott Wave analysis)
-                # These provide visual context for structure, pullbacks, and targets without claiming
-                # a full automated Elliott Wave count (which requires significant discretion).
-                try:
-                    # Recent swing for Fib context (last ~40 bars gives a reasonable impulse or corrective move)
-                    lookback = min(40, len(hist) - 1)
-                    swing_low = float(hist['Low'].tail(lookback).min())
-                    swing_high = float(hist['High'].tail(lookback).max())
-
-                    if swing_high > swing_low:
-                        key_fib_levels = [
-                            (0.618, "Fib 0.618 (typical Wave 2/4 support)"),
-                            (1.0, "Fib 1.0 (equal wave measure)"),
-                            (1.618, "Fib 1.618 (Wave 3 or 5 extension)"),
-                            (2.618, "Fib 2.618 (extended Wave 5 target)"),
-                        ]
-                        for ratio, label in key_fib_levels:
-                            fib_price = swing_low + (swing_high - swing_low) * ratio
-                            # Use purple-ish for EW/Fib to distinguish from trade levels
-                            fig.add_hline(
-                                y=fib_price,
-                                line_dash="dot",
-                                line_color="#9c27b0",
-                                line_width=0.9,
-                                row=1, col=1,
-                                annotation_text=label,
-                                annotation_position="left",
-                                annotation_font_size=8
-                            )
-                except Exception:
-                    pass
 
                 # Volume bars
                 colors = ['#26a69a' if close >= open else '#ef5350' for close, open in zip(hist['Close'], hist['Open'])]
@@ -380,8 +348,7 @@ def _render_pick(sig, rank: int) -> None:
                     f"Candles show real price action & structure (higher highs etc.). "
                     f"EMA20 (blue) / EMA50 (orange) + SMA20/SMA50 (dotted) show trend, momentum & golden cross. "
                     f"Colored volume bars support the RVOL reason. "
-                    f"Dashed lines = exact Entry / Stop / T1 / T2. "
-                    f"Dotted purple lines = heuristic Fibonacci retracements/extensions (common reference points in Elliott Wave analysis for pullbacks and targets)."
+                    f"Dashed lines = exact Entry / Stop / T1 / T2 that make this a valid trade."
                 )
         except Exception as e:
             st.caption(f"Advanced chart unavailable (install plotly if missing: pip install plotly). Simple view: {e}")
