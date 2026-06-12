@@ -31,22 +31,28 @@ def _evaluate_trade(
     """
     Walk bars in order; return status, last price, pct from entry, days held.
     Uses limit entry — assumes fill if price traded at or below entry on a bar.
+    days_held is counted from the fill bar (inclusive) until the exit bar (or today).
     """
     if df.empty or entry <= 0:
         return "no_data", 0.0, 0.0, 0
 
     filled = False
     status = "open"
-    days = len(df)
+    days = 0
 
     for _, bar in df.iterrows():
         low = float(bar["Low"])
         high = float(bar["High"])
+
         if not filled:
             if low <= entry:
                 filled = True
+                days = 1  # first day the position is considered held
             else:
                 continue
+        else:
+            days += 1
+
         if low <= stop:
             return "stopped", float(bar["Close"]), ((stop - entry) / entry) * 100, days
         if high >= t2:
@@ -88,7 +94,9 @@ def _fetch_since(symbol: str, start: pd.Timestamp) -> pd.DataFrame:
 
 
 def update_outcomes(*, only_pending: bool = True) -> pd.DataFrame:
-    """Refresh outcome columns in the journal CSV."""
+    """Re-evaluate pending and open journal entries against actual price action since their scan date.
+    Updates outcome_status, outcome_date, outcome_price, pct_from_entry and days_held in the DB.
+    """
     journal = load_journal()
     if journal.empty:
         return journal
@@ -99,7 +107,9 @@ def update_outcomes(*, only_pending: bool = True) -> pd.DataFrame:
 
     for idx, row in journal.iterrows():
         status_prev = str(row.get("outcome_status", "")).strip()
-        if only_pending and status_prev not in ("", "open", "error"):
+        # Re-evaluate pending entries + currently open trades (so days_held and outcome_date can update on refresh).
+        # Truly closed trades (hit_t*, stopped, not_filled) are left as historical record.
+        if only_pending and status_prev not in ("", "open", "error", "open_profit", "open_loss"):
             continue
 
         symbol = str(row["symbol"])

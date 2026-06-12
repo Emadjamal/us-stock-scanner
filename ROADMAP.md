@@ -15,6 +15,7 @@
 - Configurable **Scan Period** + **Timeframe** + **Top Picks** slider (sidebar + per-mode)
 - Real candlestick charts with EMAs, SMAs, golden cross, trade levels, volume
 - Complete SQLite (local) + Turso/libsql (cloud) persistence for watchlist, journal, custom_modes, active_trades
+- Journal outcomes evaluation for old picks (update_outcomes + stats + UI/CLI refresh, works for historical signals)
 - Secrets bridge for Streamlit Cloud
 - Rich per-scan diagnostics (Effective params, Gates used, signals_found, rejection breakdown)
 - Journal display bug fixed ("all fields none")

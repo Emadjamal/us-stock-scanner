@@ -744,6 +744,7 @@ with st.sidebar:
         with st.spinner("Updating…"):
             update_outcomes(only_pending=True)
         st.rerun()
+    st.caption("This re-evaluates pending + currently open journal entries (updates outcome_date and days_held for open trades). Closed trades keep their historical outcome timestamp.")
 
 # --- Main tabs ---
 st.header("Find your best trade setup")
@@ -1250,6 +1251,7 @@ with tab_journal:
         with st.spinner("Fetching prices…"):
             update_outcomes(only_pending=True)
         st.rerun()
+    st.caption("Re-evaluates pending and open (unrealized) entries. outcome_date and days_held will update for open trades. Closed historical trades keep the date from when they were first evaluated.")
     df = load_journal()
     _journal_stats(df)
     if not df.empty:
