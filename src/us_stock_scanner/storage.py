@@ -652,17 +652,31 @@ def get_active_trades() -> list[dict]:
     init_db()
     conn = _get_conn()
     try:
-        rows = conn.execute(
+        cur = conn.execute(
             "SELECT * FROM active_trades WHERE status NOT IN ('closed', 'stopped', 't2_hit') ORDER BY approved_ts DESC"
-        ).fetchall()
+        )
+        rows = cur.fetchall()
         trades = []
-        for r in rows:
-            d = dict(r)
-            try:
-                d["reasons"] = json.loads(d.get("reasons_json") or "[]")
-            except Exception:
-                d["reasons"] = []
-            trades.append(d)
+        if rows:
+            if isinstance(rows[0], (list, tuple)):
+                # libsql / Turso returns tuples — map using description
+                cols = [d[0] for d in cur.description] if cur.description else []
+                for r in rows:
+                    d = dict(zip(cols, r))
+                    try:
+                        d["reasons"] = json.loads(d.get("reasons_json") or "[]")
+                    except Exception:
+                        d["reasons"] = []
+                    trades.append(d)
+            else:
+                # local sqlite3 with row_factory returns dicts
+                for r in rows:
+                    d = dict(r)
+                    try:
+                        d["reasons"] = json.loads(d.get("reasons_json") or "[]")
+                    except Exception:
+                        d["reasons"] = []
+                    trades.append(d)
         return trades
     finally:
         conn.close()
@@ -672,10 +686,15 @@ def get_active_trade(trade_id: int) -> dict | None:
     init_db()
     conn = _get_conn()
     try:
-        row = conn.execute("SELECT * FROM active_trades WHERE id = ?", (trade_id,)).fetchone()
+        cur = conn.execute("SELECT * FROM active_trades WHERE id = ?", (trade_id,))
+        row = cur.fetchone()
         if not row:
             return None
-        d = dict(row)
+        if isinstance(row, (list, tuple)):
+            cols = [d[0] for d in cur.description] if cur.description else []
+            d = dict(zip(cols, row))
+        else:
+            d = dict(row)
         try:
             d["reasons"] = json.loads(d.get("reasons_json") or "[]")
         except Exception:
